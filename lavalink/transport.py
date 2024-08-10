@@ -291,6 +291,9 @@ class Transport:
 
             assert player.current is not None
             event = TrackStartEvent(player, player.current)
+
+            if hasattr(player, '_internal_pause'):
+                player._internal_pause = False  # type: ignore
         elif event_type == 'TrackEndEvent':
             end_reason = EndReason.from_str(data['reason'])
             event = TrackEndEvent(player, player.current, end_reason)
@@ -308,7 +311,8 @@ class Transport:
         elif event_type == 'WebSocketClosedEvent':
             event = WebSocketClosedEvent(player, data['code'], data['reason'], data['byRemote'])
         else:
-            _log.warning('[Node:%s] Unknown event received of type \'%s\'', self._node.name, event_type)
+            if not self.client.has_listeners(IncomingWebSocketMessage):
+                _log.warning('[Node:%s] Unknown event received of type \'%s\'', self._node.name, event_type)
             return
 
         await self.client._dispatch_event(event)
@@ -353,6 +357,9 @@ class Transport:
         if trace is True or self.trace_requests is True:
             kwargs['params'] = {**kwargs.get('params', {}), 'trace': 'true'}
 
+        if path.startswith('/'):
+            path = path[1:]
+
         if versioned:
             request_url = f'{self.http_uri}/{LAVALINK_API_VERSION}/{path}'
         else:
@@ -379,7 +386,7 @@ class Transport:
 
                 raise RequestError('An invalid response was received from the node.',
                                    status=res.status, response=await res.json(), params=kwargs.get('params', {}))
-        except (AuthenticationError, RequestError):
+        except (AuthenticationError, RequestError, asyncio.TimeoutError, aiohttp.ClientError):
             raise  # Pass the caught errors back to the caller in their 'original' form.
-        except Exception as original:  # It's not pretty but aiohttp doesn't specify what exceptions can be thrown.
+        except Exception as original:
             raise ClientError from original

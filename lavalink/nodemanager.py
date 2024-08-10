@@ -22,13 +22,14 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 """
 import logging
-from typing import TYPE_CHECKING, Dict, Iterator, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Tuple
 
 from .errors import ClientError
 from .node import Node
 
 if TYPE_CHECKING:
     from .client import Client
+    from .abc import BasePlayer
 
 _log = logging.getLogger(__name__)
 DEFAULT_REGIONS = {
@@ -74,16 +75,12 @@ class NodeManager:
     def available_nodes(self) -> List[Node]:
         """
         Returns a list of available nodes.
-
-        .. deprecated:: 5.0.0
-            As of Lavalink server 4.0.0, a WebSocket connection is no longer required to operate a
-            node. As a result, this property is no longer considered useful as all nodes are considered
-            available.
+        A node is considered available if it has an open WebSocket connection.
         """
         return [n for n in self.nodes if n.available]
 
     def add_node(self, host: str, port: int, password: str, region: str, name: Optional[str] = None,
-                 ssl: bool = False, session_id: Optional[str] = None, connect: bool = True) -> Node:
+                 ssl: bool = False, session_id: Optional[str] = None, connect: bool = True, tags: Optional[Dict[str, Any]] = None) -> Node:
         """
         Adds a node to this node manager.
 
@@ -109,6 +106,9 @@ class NodeManager:
         connect: :class:`bool`
             Whether to immediately connect to the node after creating it.
             If ``False``, you must call :func:`Node.connect` if you require WebSocket functionality.
+        tags: Optional[Dict[:class:`str`, Any]]
+            Additional tags to attach to this node. You can use this to store additional metadata
+            that you may need to access later.
 
         Returns
         -------
@@ -116,7 +116,7 @@ class NodeManager:
             The created Node instance.
         """
         node = Node(self, host, port, password, region, name, ssl,
-                    session_id, connect)
+                    session_id, connect, tags)
         self.nodes.append(node)
         return node
 
@@ -228,10 +228,13 @@ class NodeManager:
         return best_node
 
     async def _handle_node_ready(self, node: Node):
+        player: 'BasePlayer'
+
         for player in self._player_queue:
             await player.change_node(node)
-            original_node_name = player._original_node.name if player._original_node else '[no node]'
-            _log.debug('Moved player %d from node \'%s\' to node \'%s\'', player.guild_id, original_node_name, node.name)
+            last_node = player._original_node or player.node
+            last_node_name = last_node.name if last_node else '[no node]'
+            _log.debug('Moved player %d from node \'%s\' to node \'%s\'', player.guild_id, last_node_name, node.name)
 
         if self._connect_back:
             for player in node._original_players:

@@ -59,11 +59,13 @@ class Node:
         The name the :class:`Node` is identified by.
     stats: :class:`Stats`
         The statistics of how the :class:`Node` is performing.
+    tags: Dict[:class:`str`, Any]
+        Additional tags to attach to this node.
     """
-    __slots__ = ('client', 'manager', '_transport', 'region', 'name', 'stats')
+    __slots__ = ('client', 'manager', '_transport', 'region', 'name', 'stats', 'tags')
 
     def __init__(self, manager, host: str, port: int, password: str, region: str, name: Optional[str] = None,
-                 ssl: bool = False, session_id: Optional[str] = None, connect: bool = True):
+                 ssl: bool = False, session_id: Optional[str] = None, connect: bool = True, tags: Optional[Dict[str, Any]] = None):
         self.client: 'Client' = manager.client
         self.manager: 'NodeManager' = manager
         self._transport = Transport(self, host, port, password, ssl, session_id, connect)
@@ -71,6 +73,7 @@ class Node:
         self.region: str = region
         self.name: str = name or f'{region}-{host}:{port}'
         self.stats: Stats = Stats.empty(self)
+        self.tags: Dict[str, Any] = tags or {}
 
     @property
     def session_id(self) -> Optional[str]:
@@ -611,11 +614,11 @@ class Node:
         ...
 
     @overload
-    async def request(self, method: str, path: str, *, trace: bool = ..., versioned: bool = ...,
+    async def request(self, method: str, path: str, *, trace: bool = ..., versioned: bool = ...,  # type: ignore
                       **kwargs) -> Union[Dict[Any, Any], List[Any], bool]:
         ...
 
-    async def request(self,
+    async def request(self,  # type: ignore
                       method: str,
                       path: str,
                       *,
@@ -664,8 +667,12 @@ class Node:
             If the provided authorization was invalid.
         :class:`RequestError`
             If the request was unsuccessful.
+        :class:`asyncio.TimeoutError`
+            If the request times out.
+        :class:`aiohttp.ClientError`
+            If the remote server disconnects, or a connection fails to establish etc.
         :class:`ClientError`
-            If there were any intermediate issues, such as trying to establish a connection but the server is unreachable.
+            A catch-all for anything not covered by the above.
 
         Returns
         -------
